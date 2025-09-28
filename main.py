@@ -3,6 +3,7 @@ import sys
 import enum
 import math
 import numpy as np
+import random
 
 from pygame import MOUSEBUTTONDOWN
 
@@ -15,6 +16,9 @@ FPS = 60
 WIDTH, HEIGHT = pygame.display.Info().current_w, pygame.display.Info().current_h
 FRICTION = 0.98
 
+MAX_BALL_SPEED = 30
+MIN_BALL_SPEED = 5
+
 # Background image
 sky_image = pygame.image.load("img/sky.png")
 sky_image = pygame.transform.scale(sky_image, (2500, 1000))
@@ -22,7 +26,8 @@ sky_image = pygame.transform.scale(sky_image, (2500, 1000))
 ground_image = pygame.image.load("img/grass.png")
 
 wall_hit_sound = pygame.mixer.Sound("sounds/wall_hit.wav")
-white_ball_hit_sound = pygame.mixer.Sound("sounds/white_ball_hit.wav");
+ball_hits_ball_sound = pygame.mixer.Sound("sounds/ball_hits_ball.wav")
+white_ball_hit_sound = pygame.mixer.Sound("sounds/white_ball_hit.wav")
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
@@ -37,6 +42,10 @@ class Color(enum.Enum):
     RED = (237, 17, 54)
     BLUE = (120, 166, 240)
     GREEN = (72, 110, 0)
+
+class Team(enum.Enum):
+    RED = Color.RED
+    BLUE = Color.BLUE
 
 # Base Component Class
 class Component:
@@ -84,6 +93,17 @@ class Wall(Component):
 
         return [(distance_x ** 2 + distance_y ** 2) < ball_radius ** 2, abs(distance_x) > abs(distance_y)]
 
+class Hole(Component):
+    def __init__(self, x, y, radius):
+        super(Hole, self).__init__(x, y)
+        self.radius = radius
+
+    def draw(self, surface):
+        pygame.draw.circle(surface, Color.BLACK.value, (self.x, self.y), self.radius)
+
+    def check_ball_in_hole(self, ball):
+        pass
+
 class Ball(Component):
     def __init__(self, x, y, radius, color):
         super(Ball, self).__init__(x, y)
@@ -93,6 +113,7 @@ class Ball(Component):
         self.vel_y = 0.0
         self.theta = 0.0
         self.vel_main = 0.0
+        self.mass = 0.2 #kg
         self.moving = False
 
     def draw(self, surface):
@@ -121,32 +142,74 @@ class Ball(Component):
     def check_ball_collision(self, ball2):
         dx = self.x - ball2.x
         dy = self.y - ball2.y
-        # Extends the hitbox a little
-        hitbox_extra = 15
-
-        return dx**2 + dy**2 < (self.radius + ball2.radius + hitbox_extra)**2 + hitbox_extra**2
+        # Extra hitbox
+        hitbox_extra = 5
+        return math.hypot(dx, dy) < self.radius + ball2.radius + hitbox_extra
 
     # Returns the tangent point/collision point
     def get_collision_point(self, ball2):
         phi = math.atan2(ball2.y - self.y, ball2.x - self.x)
         return self.x + self.radius * math.cos(phi), self.y + self.radius * math.sin(phi)
 
-    def deflect(self, ball2):
-        collision_point = self.get_collision_point(ball2)
-        print(collision_point)
+    # Elastic ball collisions
+    def collide(self, ball2):
+        Ball.displace_overlap(self, ball2)
 
-        # Two key vectors (Normal vector and movement vector)
-        normal_vector = [collision_point[0] - self.x, collision_point[1] - self.y]
-        normal_angle = math.atan2(normal_vector[1], normal_vector[0])
-        movement_vector = [ball2.vel_x, ball2.vel_y]
+        initial_v1 = np.array([self.vel_x, self.vel_y])
+        initial_v2 = np.array([ball2.vel_x, ball2.vel_y])
+        impact_vector = np.array([ball2.x - self.x, ball2.y - self.y])
+        impact_mag = np.linalg.norm(impact_vector)
+        relative_velocity = initial_v2 - initial_v1
 
-        dot_product = np.dot(normal_vector, movement_vector)
-        distance_product = math.hypot(normal_vector[0], normal_vector[1]) * math.hypot(movement_vector[0], movement_vector[1])
-        cosine = dot_product / distance_product
-        alpha = math.acos(cosine)
+        if impact_mag < 25:
+            return None
 
-        ball2.theta = 2 * alpha
-        ball2.set_existing_vector()
+        numerator = relative_velocity.dot(impact_vector) * impact_vector
+        denominator = impact_mag ** 2
+
+        final_velocity1 = initial_v1 + (numerator / denominator)
+        final_velocity2 = initial_v2 + (-numerator / denominator)
+
+        self.vel_x, self.vel_y = final_velocity1
+        ball2.vel_x, ball2.vel_y = final_velocity2
+
+        self.moving = True
+        self.update()
+        return None
+
+        # Total kinetic energy; Before and After
+        #kinA = (0.5 * self.mass * np.linalg.norm(final_velocity1)) + (0.5 * ball2.mass * np.linalg.norm(final_velocity2))
+        #kinB = (0.5 * self.mass * np.linalg.norm(initial_v1)) + (0.5 * ball2.mass * np.linalg.norm(initial_v2))
+
+        # The kinetic energy is conserved
+        #print(kinA, kinB)
+
+    # Displaces the balls on overlap (This shit does nothing😑)
+    @staticmethod
+    def displace_overlap(ball1, ball2):
+        dx = ball2.x - ball1.x
+        dy = ball2.y - ball1.y
+        dist = math.hypot(dx, dy)
+
+        if dist == 0:
+            dist = 0.1
+            dx, dy = 1, 0
+
+        min_dist = ball1.radius + ball2.radius
+        if dist < min_dist:
+            overlap = min_dist - dist + 1 # Added small buffer to prevent re-collision
+            nx = dx / dist
+            ny = dy / dist
+
+            # Push balls apart
+            ball1.x -= overlap * 0.5 * nx
+            ball1.y -= overlap * 0.5 * ny
+            ball2.x += overlap * 0.5 * nx
+            ball2.y += overlap * 0.5 * ny
+
+            # Update positions
+            ball1.pos = (ball1.x, ball1.y)
+            ball2.pos = (ball2.x, ball2.y)
 
 class Player(Ball):
     def __init__(self, x, y, radius):
@@ -175,11 +238,15 @@ class Player(Ball):
 
 # Game class to manage components
 class Game:
-    def __init__(self, player, walls, balls):
+    def __init__(self, player, walls, balls, holes):
         self.player = player
         self.walls = walls
         self.balls = balls
+        self.holes = holes
         self.components = []
+        self.pocketed_balls = []
+        self.winner = None
+        self.current_team = random.choice([Team.RED, Team.BLUE])
 
     def add_component(self, component):
         self.components.append(component)
@@ -194,6 +261,11 @@ class Game:
                     running = False
 
                 if event.type == MOUSEBUTTONDOWN and not self.player.moving:
+                    if self.player.vel_main > MAX_BALL_SPEED:
+                        self.player.vel_main = MAX_BALL_SPEED
+                    elif self.player.vel_main < MIN_BALL_SPEED:
+                        self.player.vel_main = MIN_BALL_SPEED
+
                     # Changes the motion state
                     self.player.moving = True
                     self.player.set_update_vector()
@@ -233,11 +305,21 @@ class Game:
 
                             wall_hit_sound.play()
 
-            for ball in self.balls:
-                # Only returns a boolean
-                ball_collision = ball.check_ball_collision(self.player)
-                if ball_collision:
-                    ball.deflect(self.player)
+            for i, ball in enumerate(self.balls):
+                # Check collision with player
+                if ball.check_ball_collision(self.player):
+                    ball.collide(self.player)
+                    Ball.displace_overlap(ball, self.player)
+                    ball_hits_ball_sound.play()
+
+                # Check collision with other balls
+                for j in range(i + 1, len(self.balls)):
+                    ball2 = self.balls[j]
+
+                    if ball.check_ball_collision(ball2):
+                        ball.collide(ball2)
+                        Ball.displace_overlap(ball, ball2)
+                        ball_hits_ball_sound.play()
 
             # Shows the direction pointed
             if not self.player.moving:
@@ -253,7 +335,7 @@ class Game:
         sys.exit()
 
 # Game objects
-PLAYER = Player(x = 200, y = 500, radius = 15)
+PLAYER = Player(x = 500, y = 400, radius = 15)
 WALLS = [
     Wall(x = 40, y = 40, width = 60, height = 820),
     Wall(x = 100, y = 40, width = 1460, height = 60),
@@ -261,8 +343,18 @@ WALLS = [
     Wall(x = 100, y = 800, width = 1400, height = 60)
 ]
 BALLS = [
-    Ball(x = 500, y = 500, radius = 15, color = Color.BLUE.value)
+    Ball(x = 700, y = 400, radius = 15, color = Color.BLUE.value),
+    Ball(x = 750, y = 400, radius = 15, color = Color.BLUE.value),
+    Ball(x = 800, y = 400, radius = 15, color = Color.BLUE.value),
+    Ball(x = 850, y = 400, radius = 15, color = Color.BLUE.value),
+
+    Ball(x = 700, y = 500, radius = 15, color = Color.RED.value),
+    Ball(x = 750, y = 500, radius = 15, color = Color.RED.value),
+    Ball(x = 800, y = 500, radius = 15, color = Color.RED.value),
+    Ball(x = 850, y = 500, radius = 15, color = Color.RED.value)
 ]
+HOLES = []
+TEAMS = [Team.RED, Team.BLUE]
 platforms = [
     Platform(x = 100, y = 100, width = 1400, height = 700)
 ]
@@ -278,6 +370,9 @@ for platform in platforms:
 
 for ball in BALLS:
     game.add_component(ball)
+
+for hole in HOLES:
+    game.add_component(hole)
 
 game.add_component(PLAYER)
 

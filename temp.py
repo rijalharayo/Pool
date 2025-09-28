@@ -122,7 +122,7 @@ class Ball(Component):
         dx = self.x - ball2.x
         dy = self.y - ball2.y
         # Extends the hitbox a little
-        hitbox_extra = 20
+        hitbox_extra = 15
 
         return dx**2 + dy**2 < (self.radius + ball2.radius + hitbox_extra)**2 + hitbox_extra**2
 
@@ -131,33 +131,22 @@ class Ball(Component):
         phi = math.atan2(ball2.y - self.y, ball2.x - self.x)
         return self.x + self.radius * math.cos(phi), self.y + self.radius * math.sin(phi)
 
-    import numpy as np
-    import math
-
     def deflect(self, ball2):
-        # Get collision point and normal vector
         collision_point = self.get_collision_point(ball2)
         print(collision_point)
 
-        # Normal vector: from self's center to collision point
-        normal_vector = np.array([collision_point[0] - self.x, collision_point[1] - self.y])
-        # Velocity vector of ball2
-        velocity_vector = np.array([ball2.vel_x, ball2.vel_y])
+        # Two key vectors (Normal vector and movement vector)
+        normal_vector = [collision_point[0] - self.x, collision_point[1] - self.y]
+        normal_angle = math.atan2(normal_vector[1], normal_vector[0])
+        movement_vector = [ball2.vel_x, ball2.vel_y]
 
-        # Check for zero magnitude to avoid division by zero
-        normal_magnitude_squared = np.dot(normal_vector, normal_vector)
-        if normal_magnitude_squared == 0 or np.dot(velocity_vector, velocity_vector) == 0:
-            return  # No deflection if vectors are zero
+        dot_product = np.dot(normal_vector, movement_vector)
+        distance_product = math.hypot(normal_vector[0], normal_vector[1]) * math.hypot(movement_vector[0], movement_vector[1])
+        cosine = dot_product / distance_product
+        alpha = math.acos(cosine)
 
-        # Compute reflected velocity: v' = v - 2 * (v . n / ||n||^2) * n
-        dot_product = np.dot(velocity_vector, normal_vector)
-        reflection = velocity_vector - 2 * (dot_product / normal_magnitude_squared) * normal_vector
-
-        # Update ball2's velocity
-        ball2.vel_x, ball2.vel_y = reflection
-
-        # Update ball2.theta based on new velocity
-        ball2.theta = math.atan2(ball2.vel_y, ball2.vel_x)
+        ball2.theta = alpha
+        ball2.set_existing_vector()
 
 class Player(Ball):
     def __init__(self, x, y, radius):
@@ -272,7 +261,7 @@ WALLS = [
     Wall(x = 100, y = 800, width = 1400, height = 60)
 ]
 BALLS = [
-    Ball(x = 500, y = 500, radius = 15, color = Color.BLUE.value)
+    Ball(x = 500, y = 500, radius = 50, color = Color.BLUE.value)
 ]
 platforms = [
     Platform(x = 100, y = 100, width = 1400, height = 700)
