@@ -1,3 +1,5 @@
+# Testing ground
+
 import pygame
 import sys
 import enum
@@ -282,4 +284,5 @@ for ball in BALLS:
 game.add_component(PLAYER)
 
 # Run the game
+
 game.run()
