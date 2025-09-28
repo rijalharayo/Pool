@@ -161,8 +161,10 @@ class Ball(Component):
     def collide(self, ball2):
         Ball.displace_overlap(self, ball2)
 
+        # Initial velocity vectors
         initial_v1 = np.array([self.vel_x, self.vel_y])
         initial_v2 = np.array([ball2.vel_x, ball2.vel_y])
+
         impact_vector = np.array([ball2.x - self.x, ball2.y - self.y])
         impact_mag = np.linalg.norm(impact_vector)
         relative_velocity = initial_v2 - initial_v1
@@ -363,10 +365,12 @@ class Game:
                         if ball.moving or ball2.moving:
                             ball_hits_ball_sound.play()
 
+                # Checks if any ball went inside the hole
                 for hole in HOLES:
                     if hole.check_ball_in_hole(ball):
                         BALLS.remove(ball)
                         self.components.remove(ball)
+                        self.pocketed_balls.append(ball)
                         if ball.color == Color.RED:
                             self.score_red += 1
                             TEXTS[0].update_text("Red: " + str(self.score_red))
