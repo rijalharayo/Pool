@@ -24,10 +24,13 @@ sky_image = pygame.image.load("img/sky.png")
 sky_image = pygame.transform.scale(sky_image, (2500, 1000))
 
 ground_image = pygame.image.load("img/grass.png")
+button_sprite = pygame.image.load("img/button.png")
 
 wall_hit_sound = pygame.mixer.Sound("sounds/wall_hit.wav")
 ball_hits_ball_sound = pygame.mixer.Sound("sounds/ball_hits_ball.wav")
 white_ball_hit_sound = pygame.mixer.Sound("sounds/white_ball_hit.wav")
+
+main_font = "fonts/main_font.ttf"
 
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
@@ -102,7 +105,10 @@ class Hole(Component):
         pygame.draw.circle(surface, Color.BLACK.value, (self.x, self.y), self.radius)
 
     def check_ball_in_hole(self, ball):
-        pass
+        dx = self.x - ball.x
+        dy = self.y - ball.y
+        d = math.hypot(dx, dy)
+        return d < self.radius + ball.radius
 
 class Ball(Component):
     def __init__(self, x, y, radius, color):
@@ -118,7 +124,7 @@ class Ball(Component):
 
     def draw(self, surface):
         pygame.draw.circle(surface, Color.BLACK.value, (self.x, self.y), self.radius + 10)
-        pygame.draw.circle(surface, self.color, (int(self.x), int(self.y)), self.radius)
+        pygame.draw.circle(surface, self.color.value, (int(self.x), int(self.y)), self.radius)
 
     # Updates the ball's position
     def update(self):
@@ -143,7 +149,7 @@ class Ball(Component):
         dx = self.x - ball2.x
         dy = self.y - ball2.y
         # Extra hitbox
-        hitbox_extra = 5
+        hitbox_extra = 10
         return math.hypot(dx, dy) < self.radius + ball2.radius + hitbox_extra
 
     # Returns the tangent point/collision point
@@ -213,13 +219,13 @@ class Ball(Component):
 
 class Player(Ball):
     def __init__(self, x, y, radius):
-        super(Player, self).__init__(x, y, radius, Color.WHITE.value)
+        super(Player, self).__init__(x, y, radius, Color.WHITE)
 
     def draw_direction(self, surface):
         mouse_x, mouse_y = pygame.mouse.get_pos()
         # Rotates the mouse position by 180 deg
         line_pos = (2 * self.x - mouse_x, 2 * self.y - mouse_y)
-        pygame.draw.line(surface, Color.BLACK.value, self.pos, line_pos, 2)
+        pygame.draw.line(surface, Color.BLACK.value, self.pos, line_pos, 3)
 
         # Gets the slope of the line as an angle
         self.theta = math.atan2(line_pos[1] - self.y, line_pos[0] - self.x)
@@ -236,17 +242,49 @@ class Player(Ball):
         self.vel_x *= math.cos(self.theta)
         self.vel_y *= math.sin(self.theta)
 
+class Text(Component):
+    def __init__(self, x, y, text, size):
+        super(Text, self).__init__(x, y)
+        self.text = text
+        self.size = size
+        self.font = pygame.font.Font(main_font, size)
+        self.custom_font = self.font.render(self.text, True, Color.BLACK.value)
+
+    def draw(self, surface):
+        surface.blit(self.custom_font, (self.x, self.y))
+
+    def update_text(self, new_text):
+        self.text = new_text
+        self.custom_font = self.font.render(self.text, True, Color.BLACK.value)
+
+class Button(Component):
+    def __init__(self, x, y, width, height, text: Text):
+        super(Button, self).__init__(x, y)
+        self.width = width
+        self.height = height
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text.custom_font
+        text_rect = self.text.get_rect()
+        self.text_pos = (x + (width - text_rect.width)//2, y + 5 + (height - text_rect.height)//2)
+        self.sprite = pygame.transform.scale(button_sprite, (width, height))
+
+    def draw(self, surface):
+        surface.blit(self.sprite, (self.x, self.y))
+        surface.blit(self.text, self.text_pos)
+
+    def action(self):
+        pass
+
 # Game class to manage components
 class Game:
-    def __init__(self, player, walls, balls, holes):
+    def __init__(self, player):
         self.player = player
-        self.walls = walls
-        self.balls = balls
-        self.holes = holes
         self.components = []
         self.pocketed_balls = []
         self.winner = None
         self.current_team = random.choice([Team.RED, Team.BLUE])
+        self.score_red = 0
+        self.score_blue = 0
 
     def add_component(self, component):
         self.components.append(component)
@@ -280,7 +318,7 @@ class Game:
             for comp in self.components:
                 comp.draw(screen)
 
-            for wall in self.walls:
+            for wall in WALLS:
                 if self.player.moving:
                     wall_collision = wall.check_collision(self.player.x, self.player.y, self.player.radius)
                     # Returns [hasCollided, isCollisionVertical]
@@ -293,7 +331,7 @@ class Game:
                         wall_hit_sound.play()
 
                 # Checks for collision with other balls
-                for ball in self.balls:
+                for ball in BALLS:
                     if ball.moving:
                         wall_collision = wall.check_collision(ball.x, ball.y, ball.radius)
                         # Returns [hasCollided, isCollisionVertical]
@@ -305,21 +343,36 @@ class Game:
 
                             wall_hit_sound.play()
 
-            for i, ball in enumerate(self.balls):
+            for i, ball in enumerate(BALLS):
                 # Check collision with player
                 if ball.check_ball_collision(self.player):
                     ball.collide(self.player)
                     Ball.displace_overlap(ball, self.player)
-                    ball_hits_ball_sound.play()
+
+                    if self.player.moving or ball:
+                        ball_hits_ball_sound.play()
 
                 # Check collision with other balls
-                for j in range(i + 1, len(self.balls)):
-                    ball2 = self.balls[j]
+                for j in range(i + 1, len(BALLS)):
+                    ball2 = BALLS[j]
 
                     if ball.check_ball_collision(ball2):
                         ball.collide(ball2)
                         Ball.displace_overlap(ball, ball2)
-                        ball_hits_ball_sound.play()
+
+                        if ball.moving or ball2.moving:
+                            ball_hits_ball_sound.play()
+
+                for hole in HOLES:
+                    if hole.check_ball_in_hole(ball):
+                        BALLS.remove(ball)
+                        self.components.remove(ball)
+                        if ball.color == Color.RED:
+                            self.score_red += 1
+                            TEXTS[0].update_text("Red: " + str(self.score_red))
+                        else:
+                            self.score_blue += 1
+                            TEXTS[1].update_text("Blue: " + str(self.score_blue))
 
             # Shows the direction pointed
             if not self.player.moving:
@@ -335,6 +388,9 @@ class Game:
         sys.exit()
 
 # Game objects
+BUTTONS = [
+    Button(x = 5, y = 5, width = 150, height = 50, text = Text(text = "Reset", x = 0, y = 0, size = 40))
+]
 PLAYER = Player(x = 500, y = 400, radius = 15)
 WALLS = [
     Wall(x = 40, y = 40, width = 60, height = 820),
@@ -343,36 +399,55 @@ WALLS = [
     Wall(x = 100, y = 800, width = 1400, height = 60)
 ]
 BALLS = [
-    Ball(x = 700, y = 400, radius = 15, color = Color.BLUE.value),
-    Ball(x = 750, y = 400, radius = 15, color = Color.BLUE.value),
-    Ball(x = 800, y = 400, radius = 15, color = Color.BLUE.value),
-    Ball(x = 850, y = 400, radius = 15, color = Color.BLUE.value),
+    Ball(x = 700, y = 400, radius = 15, color = Color.BLUE),
+    Ball(x = 770, y = 400, radius = 15, color = Color.BLUE),
+    Ball(x = 840, y = 400, radius = 15, color = Color.BLUE),
+    Ball(x = 910, y = 400, radius = 15, color = Color.BLUE),
 
-    Ball(x = 700, y = 500, radius = 15, color = Color.RED.value),
-    Ball(x = 750, y = 500, radius = 15, color = Color.RED.value),
-    Ball(x = 800, y = 500, radius = 15, color = Color.RED.value),
-    Ball(x = 850, y = 500, radius = 15, color = Color.RED.value)
+    Ball(x = 700, y = 500, radius = 15, color = Color.RED),
+    Ball(x = 770, y = 500, radius = 15, color = Color.RED),
+    Ball(x = 840, y = 500, radius = 15, color = Color.RED),
+    Ball(x = 910, y = 500, radius = 15, color = Color.RED)
 ]
-HOLES = []
+HOLES = [
+    Hole(x = 120, y = 120, radius = 40),
+    Hole(x = 780, y = 120, radius = 40),
+    Hole(x = 1480, y = 120, radius = 40),
+
+    Hole(x = 120, y = 780, radius = 40),
+    Hole(x = 780, y = 780, radius = 40),
+    Hole(x = 1480, y = 780, radius = 40)
+]
 TEAMS = [Team.RED, Team.BLUE]
 platforms = [
     Platform(x = 100, y = 100, width = 1400, height = 700)
 ]
 
 # Create game
-game = Game(PLAYER, WALLS, BALLS)
+game = Game(PLAYER)
 
-for wall in WALLS:
-    game.add_component(wall)
+TEXTS = [
+    Text(x = 1300, y = 50, text="Red: " + str(game.score_red), size = 55),
+    Text(x = 1000, y = 50, text="Blue: " + str(game.score_blue), size = 55)
+]
 
 for platform in platforms:
     game.add_component(platform)
 
+for hole in HOLES:
+    game.add_component(hole)
+
+for wall in WALLS:
+    game.add_component(wall)
+
 for ball in BALLS:
     game.add_component(ball)
 
-for hole in HOLES:
-    game.add_component(hole)
+for button in BUTTONS:
+    game.add_component(button)
+
+for text in TEXTS:
+    game.add_component(text)
 
 game.add_component(PLAYER)
 
