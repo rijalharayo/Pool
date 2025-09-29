@@ -4,7 +4,6 @@ import enum
 import math
 import numpy as np
 import random
-import time
 
 from pygame import MOUSEBUTTONDOWN
 
@@ -161,28 +160,51 @@ class Ball(Component):
 
     # Elastic ball collisions
     def collide(self, ball2):
+        # Push balls apart first
         Ball.displace_overlap(self, ball2)
 
-        # Initial velocity vectors
+        # Initial velocities
         initial_v1 = np.array([self.vel_x, self.vel_y])
         initial_v2 = np.array([ball2.vel_x, ball2.vel_y])
 
         impact_vector = np.array([ball2.x - self.x, ball2.y - self.y])
         impact_mag = np.linalg.norm(impact_vector)
-        relative_velocity = initial_v2 - initial_v1
+        if impact_mag == 0:
+            return  # avoid divide-by-zero
 
+        relative_velocity = initial_v2 - initial_v1
         numerator = relative_velocity.dot(impact_vector) * impact_vector
         denominator = impact_mag ** 2
 
         final_velocity1 = initial_v1 + (numerator / denominator)
         final_velocity2 = initial_v2 + (-numerator / denominator)
 
+        # Assign velocities from your formula
         self.vel_x, self.vel_y = final_velocity1
         ball2.vel_x, ball2.vel_y = final_velocity2
 
+        # Fixes the final velocities to account for the tangent vector/line
+        # Compute normal and tangent unit vectors
+        nx, ny = impact_vector / impact_mag
+        tx, ty = -ny, nx
+
+        # Project new velocities onto normal/tangent
+        v1n = self.vel_x * nx + self.vel_y * ny
+        v1t = self.vel_x * tx + self.vel_y * ty
+        v2n = ball2.vel_x * nx + ball2.vel_y * ny
+        v2t = ball2.vel_x * tx + ball2.vel_y * ty
+
+        # Recombine to get final 2D velocities
+        self.vel_x = v1n * nx + v1t * tx
+        self.vel_y = v1n * ny + v1t * ty
+        ball2.vel_x = v2n * nx + v2t * tx
+        ball2.vel_y = v2n * ny + v2t * ty
+
+        # Both balls are moving
         self.moving = True
+        ball2.moving = True
+
         self.update()
-        return None
 
         # Total kinetic energy; Before and After
         #kinA = (0.5 * self.mass * np.linalg.norm(final_velocity1)) + (0.5 * ball2.mass * np.linalg.norm(final_velocity2))
