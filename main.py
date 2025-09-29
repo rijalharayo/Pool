@@ -4,6 +4,7 @@ import enum
 import math
 import numpy as np
 import random
+import time
 
 from pygame import MOUSEBUTTONDOWN
 
@@ -15,21 +16,22 @@ pygame.mixer.init()
 FPS = 60
 WIDTH, HEIGHT = pygame.display.Info().current_w, pygame.display.Info().current_h
 FRICTION = 0.98
-
 MAX_BALL_SPEED = 30
 MIN_BALL_SPEED = 5
 
-# Background image
+# Images and sprites
 sky_image = pygame.image.load("img/sky.png")
 sky_image = pygame.transform.scale(sky_image, (2500, 1000))
 
 ground_image = pygame.image.load("img/grass.png")
 button_sprite = pygame.image.load("img/button.png")
 
+# Sound effects
 wall_hit_sound = pygame.mixer.Sound("sounds/wall_hit.wav")
 ball_hits_ball_sound = pygame.mixer.Sound("sounds/ball_hits_ball.wav")
 white_ball_hit_sound = pygame.mixer.Sound("sounds/white_ball_hit.wav")
 
+# Text font
 main_font = "fonts/main_font.ttf"
 
 # Set up the display
@@ -169,9 +171,6 @@ class Ball(Component):
         impact_mag = np.linalg.norm(impact_vector)
         relative_velocity = initial_v2 - initial_v1
 
-        if impact_mag < 25:
-            return None
-
         numerator = relative_velocity.dot(impact_vector) * impact_vector
         denominator = impact_mag ** 2
 
@@ -192,32 +191,26 @@ class Ball(Component):
         # The kinetic energy is conserved
         #print(kinA, kinB)
 
-    # Displaces the balls on overlap (This shit does nothing😑)
+    # Displaces the balls on overlap
     @staticmethod
     def displace_overlap(ball1, ball2):
-        dx = ball2.x - ball1.x
-        dy = ball2.y - ball1.y
-        dist = math.hypot(dx, dy)
+        dx = ball1.x - ball2.x
+        dy = ball1.y - ball2.y
+        d = math.hypot(dx, dy)
+        overlap = ball1.radius + ball2.radius - d
 
-        if dist == 0:
-            dist = 0.1
-            dx, dy = 1, 0
+        if overlap > 0:
+            # Normalized vector components
+            nx = dx / d
+            ny = dy / d
 
-        min_dist = ball1.radius + ball2.radius
-        if dist < min_dist:
-            overlap = min_dist - dist + 1 # Added small buffer to prevent re-collision
-            nx = dx / dist
-            ny = dy / dist
+            ball1.x += (overlap / 2) * nx
+            ball1.y += (overlap / 2) * ny
 
-            # Push balls apart
-            ball1.x -= overlap * 0.5 * nx
-            ball1.y -= overlap * 0.5 * ny
-            ball2.x += overlap * 0.5 * nx
-            ball2.y += overlap * 0.5 * ny
+            ball2.x -= (overlap / 2) * nx
+            ball2.y -= (overlap / 2) * ny
 
-            # Update positions
-            ball1.pos = (ball1.x, ball1.y)
-            ball2.pos = (ball2.x, ball2.y)
+        return None
 
 class Player(Ball):
     def __init__(self, x, y, radius):
@@ -346,10 +339,11 @@ class Game:
                             wall_hit_sound.play()
 
             for i, ball in enumerate(BALLS):
+                Ball.displace_overlap(ball, self.player)
+
                 # Check collision with player
                 if ball.check_ball_collision(self.player):
                     ball.collide(self.player)
-                    Ball.displace_overlap(ball, self.player)
 
                     if self.player.moving or ball:
                         ball_hits_ball_sound.play()
@@ -357,10 +351,9 @@ class Game:
                 # Check collision with other balls
                 for j in range(i + 1, len(BALLS)):
                     ball2 = BALLS[j]
-
+                    Ball.displace_overlap(ball, ball2)
                     if ball.check_ball_collision(ball2):
                         ball.collide(ball2)
-                        Ball.displace_overlap(ball, ball2)
 
                         if ball.moving or ball2.moving:
                             ball_hits_ball_sound.play()
@@ -390,6 +383,8 @@ class Game:
 
         pygame.quit()
         sys.exit()
+
+sub_steps = 4
 
 # Game objects
 BUTTONS = [
