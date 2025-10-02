@@ -3,7 +3,7 @@ import sys
 import enum
 import math
 import numpy as np
-from pygame import MOUSEBUTTONDOWN
+from pygame import MOUSEBUTTONDOWN, MOUSEBUTTONUP
 
 # Initialize Pygame
 pygame.init()
@@ -303,6 +303,14 @@ class Button(Component):
         if self.action is not None:
             self.action()
 
+    @staticmethod
+    def get_new_buttons():
+        new_buttons = []
+        for defs in BUTTON_DEFS:
+            new_buttons.append(Button(*defs))
+
+        return new_buttons
+
 # Checks for a winner
 def check_winner(game):
     if game.score_red == 4:
@@ -325,6 +333,11 @@ BALL_DEFS = [
     (910, 500, 15, Color.RED)
 ]
 
+BUTTON_DEFS = [
+    (5, 5, 150, 50, Text(text = "Reset", x = 0, y = 0, size = 40), lambda: game.reset_player() if game.winner is None else None),
+    (1400, 5, 150, 50, Text(text = "Restart", x = 0, y = 0, size = 40), lambda: game.restart_game() if game.winner is None else None)
+]
+
 # Game class to manage components
 class Game:
     def __init__(self, player):
@@ -333,22 +346,24 @@ class Game:
         self.pocketed_balls = []
         self.winner = None
         self.score_red = 0
-        self.score_blue = 0
+        self.score_blue = 3
 
     def add_component(self, component):
         self.components.append(component)
 
     # Restarts the game
-    @staticmethod
     def restart_game(self):
+        global CURRENT_BALLS
+
+        self.components.clear()
+        CURRENT_BALLS.clear()
         CURRENT_BALLS = Ball.get_new_balls()
         self.score_red, game.score_blue = 0, 0
         self.winner = None
         self.pocketed_balls = []
-        Game.reset_player(self)
+        game.reset_player()
         self.player.update()
-        self.components.clear()
-        CURRENT_BUTTONS = BUTTONS
+        CURRENT_BUTTONS = Button.get_new_buttons()
         TEXTS[0].update_text("Red: " + str(self.score_red))
         TEXTS[1].update_text("Blue: " + str(self.score_blue))
 
@@ -373,7 +388,6 @@ class Game:
         self.add_component(PLAYER)
 
     # Resets the player's position
-    @staticmethod
     def reset_player(self):
         self.player.x = PLAYER_POS[0]
         self.player.y = PLAYER_POS[1]
@@ -401,7 +415,7 @@ class Game:
                     self.player.set_update_vector()
                     white_ball_hit_sound.play()
 
-                if event.type == MOUSEBUTTONDOWN and event.button == 1:
+                if event.type == MOUSEBUTTONUP and event.button == 1:
                     for button in CURRENT_BUTTONS:
                         if button.rect.collidepoint(event.pos):
                             button.do_action()
@@ -410,7 +424,7 @@ class Game:
             if self.winner is not None:
                 self.components.clear()
                 winner_title = Text(text = self.winner.value + " wins!", size = 150, x = (WIDTH/3) + 30, y = HEIGHT / 2.5)
-                restart_button = Button(text = Text(text = "Restart", size = 60,x = 0, y = 0), x = (WIDTH/2.5) + 10, y = (HEIGHT/2) + 100, width = 300, height = 100, action = lambda: Game.restart_game(self) if self.winner is not None else None)
+                restart_button = Button(text = Text(text = "Restart", size = 60,x = 0, y = 0), x = (WIDTH/2.5) + 10, y = (HEIGHT/2) + 100, width = 300, height = 100, action = lambda: game.restart_game() if self.winner is not None else None)
                 self.components.append(winner_title)
                 self.components.append(restart_button)
                 CURRENT_BUTTONS = [restart_button]
@@ -497,11 +511,7 @@ class Game:
         sys.exit()
 
 # Game objects
-BUTTONS = [
-    Button(x = 5, y = 5, width = 150, height = 50, text = Text(text = "Reset", x = 0, y = 0, size = 40), action = lambda: Game.reset_player(game) if game.winner is None else None),
-    Button(x = 1400, y = 5, width = 150, height = 50, text = Text(text = "Restart", x = 0, y = 0, size = 40), action = lambda: Game.restart_game(game) if game.winner is None else None)
-]
-CURRENT_BUTTONS = BUTTONS
+CURRENT_BUTTONS = Button.get_new_buttons()
 PLAYER = Player(x = 500, y = 400, radius = 15)
 WALLS = [
     Wall(x = 40, y = 40, width = 60, height = 820),
