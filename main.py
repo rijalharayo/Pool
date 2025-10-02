@@ -3,8 +3,6 @@ import sys
 import enum
 import math
 import numpy as np
-import random
-
 from pygame import MOUSEBUTTONDOWN
 
 # Initialize Pygame
@@ -33,6 +31,9 @@ white_ball_hit_sound = pygame.mixer.Sound("sounds/white_ball_hit.wav")
 # Text font
 main_font = "fonts/main_font.ttf"
 
+# Starting player position
+PLAYER_POS = (500, 400)
+
 # Set up the display
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.FULLSCREEN)
 pygame.display.set_caption("Pool")
@@ -48,8 +49,8 @@ class Color(enum.Enum):
     GREEN = (72, 110, 0)
 
 class Team(enum.Enum):
-    RED = Color.RED
-    BLUE = Color.BLUE
+    RED = "Red"
+    BLUE = "Blue"
 
 # Base Component Class
 class Component:
@@ -170,7 +171,7 @@ class Ball(Component):
         impact_vector = np.array([ball2.x - self.x, ball2.y - self.y])
         impact_mag = np.linalg.norm(impact_vector)
         if impact_mag == 0:
-            return  # avoid divide-by-zero
+            return  # avoiding divide-by-zero
 
         relative_velocity = initial_v2 - initial_v1
         numerator = relative_velocity.dot(impact_vector) * impact_vector
@@ -234,6 +235,14 @@ class Ball(Component):
 
         return None
 
+    @staticmethod
+    def get_new_balls():
+        ball_list = []
+        for defs in BALL_DEFS:
+            ball_list.append(Ball(*defs))
+
+        return ball_list
+
 class Player(Ball):
     def __init__(self, x, y, radius):
         super(Player, self).__init__(x, y, radius, Color.WHITE)
@@ -275,7 +284,7 @@ class Text(Component):
         self.custom_font = self.font.render(self.text, True, Color.BLACK.value)
 
 class Button(Component):
-    def __init__(self, x, y, width, height, text: Text):
+    def __init__(self, x, y, width, height, text: Text, action = None):
         super(Button, self).__init__(x, y)
         self.width = width
         self.height = height
@@ -284,13 +293,37 @@ class Button(Component):
         text_rect = self.text.get_rect()
         self.text_pos = (x + (width - text_rect.width)//2, y + 5 + (height - text_rect.height)//2)
         self.sprite = pygame.transform.scale(button_sprite, (width, height))
+        self.action = action
 
     def draw(self, surface):
         surface.blit(self.sprite, (self.x, self.y))
         surface.blit(self.text, self.text_pos)
 
-    def action(self):
-        pass
+    def do_action(self):
+        if self.action is not None:
+            self.action()
+
+# Checks for a winner
+def check_winner(game):
+    if game.score_red == 4:
+        game.winner = Team.RED
+    elif game.score_blue == 4:
+        game.winner = Team.BLUE
+    else:
+        game.winner = None
+
+# Game object definitions
+BALL_DEFS = [
+    (700, 400, 15, Color.BLUE),
+    (770, 400, 15, Color.BLUE),
+    (840, 400, 15, Color.BLUE),
+    (910, 400, 15, Color.BLUE),
+
+    (700, 500, 15, Color.RED),
+    (770, 500, 15, Color.RED),
+    (840, 500, 15, Color.RED),
+    (910, 500, 15, Color.RED)
+]
 
 # Game class to manage components
 class Game:
@@ -299,14 +332,56 @@ class Game:
         self.components = []
         self.pocketed_balls = []
         self.winner = None
-        self.current_team = random.choice([Team.RED, Team.BLUE])
         self.score_red = 0
         self.score_blue = 0
 
     def add_component(self, component):
         self.components.append(component)
 
+    # Restarts the game
+    @staticmethod
+    def restart_game(self):
+        CURRENT_BALLS = Ball.get_new_balls()
+        self.score_red, game.score_blue = 0, 0
+        self.winner = None
+        self.pocketed_balls = []
+        Game.reset_player(self)
+        self.player.update()
+        self.components.clear()
+        CURRENT_BUTTONS = BUTTONS
+        TEXTS[0].update_text("Red: " + str(self.score_red))
+        TEXTS[1].update_text("Blue: " + str(self.score_blue))
+
+        for platform in platforms:
+            self.add_component(platform)
+
+        for hole in HOLES:
+            self.add_component(hole)
+
+        for wall in WALLS:
+            self.add_component(wall)
+
+        for ball in CURRENT_BALLS:
+            self.add_component(ball)
+
+        for button in CURRENT_BUTTONS:
+            self.add_component(button)
+
+        for text in TEXTS:
+            self.add_component(text)
+
+        self.add_component(PLAYER)
+
+    # Resets the player's position
+    @staticmethod
+    def reset_player(self):
+        self.player.x = PLAYER_POS[0]
+        self.player.y = PLAYER_POS[1]
+        self.player.pos = PLAYER_POS
+        self.player.vel_x, self.player.vel_y = 0, 0
+
     def run(self):
+        global CURRENT_BUTTONS, CURRENT_BALLS
         running = True
         sky_image.convert(screen)
         while running:
@@ -315,7 +390,7 @@ class Game:
                 if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
                     running = False
 
-                if event.type == MOUSEBUTTONDOWN and not self.player.moving:
+                if event.type == MOUSEBUTTONDOWN and not self.player.moving and self.winner is None:
                     if self.player.vel_main > MAX_BALL_SPEED:
                         self.player.vel_main = MAX_BALL_SPEED
                     elif self.player.vel_main < MIN_BALL_SPEED:
@@ -326,6 +401,20 @@ class Game:
                     self.player.set_update_vector()
                     white_ball_hit_sound.play()
 
+                if event.type == MOUSEBUTTONDOWN and event.button == 1:
+                    for button in CURRENT_BUTTONS:
+                        if button.rect.collidepoint(event.pos):
+                            button.do_action()
+
+            check_winner(self)
+            if self.winner is not None:
+                self.components.clear()
+                winner_title = Text(text = self.winner.value + " wins!", size = 150, x = (WIDTH/3) + 30, y = HEIGHT / 2.5)
+                restart_button = Button(text = Text(text = "Restart", size = 60,x = 0, y = 0), x = (WIDTH/2.5) + 10, y = (HEIGHT/2) + 100, width = 300, height = 100, action = lambda: Game.restart_game(self) if self.winner is not None else None)
+                self.components.append(winner_title)
+                self.components.append(restart_button)
+                CURRENT_BUTTONS = [restart_button]
+
             # Update components
             for comp in self.components:
                 comp.update()
@@ -335,70 +424,71 @@ class Game:
             for comp in self.components:
                 comp.draw(screen)
 
-            for wall in WALLS:
-                if self.player.moving:
-                    wall_collision = wall.check_collision(self.player.x, self.player.y, self.player.radius)
-                    # Returns [hasCollided, isCollisionVertical]
-                    if wall_collision[0]:
-                        if wall_collision[1]:
-                            self.player.vel_x = -self.player.vel_x
-                        else:
-                            self.player.vel_y = -self.player.vel_y
-
-                        wall_hit_sound.play()
-
-                # Checks for collision with other balls
-                for ball in BALLS:
-                    if ball.moving:
-                        wall_collision = wall.check_collision(ball.x, ball.y, ball.radius)
+            if self.winner is None:
+                for wall in WALLS:
+                    if self.player.moving:
+                        wall_collision = wall.check_collision(self.player.x, self.player.y, self.player.radius)
                         # Returns [hasCollided, isCollisionVertical]
                         if wall_collision[0]:
                             if wall_collision[1]:
-                                ball.vel_x = -ball.vel_x
+                                self.player.vel_x = -self.player.vel_x
                             else:
-                                ball.vel_y = -ball.vel_y
+                                self.player.vel_y = -self.player.vel_y
 
                             wall_hit_sound.play()
 
-            for i, ball in enumerate(BALLS):
-                Ball.displace_overlap(ball, self.player)
+                    # Checks for collision with other balls
+                    for ball in CURRENT_BALLS:
+                        if ball.moving:
+                            wall_collision = wall.check_collision(ball.x, ball.y, ball.radius)
+                            # Returns [hasCollided, isCollisionVertical]
+                            if wall_collision[0]:
+                                if wall_collision[1]:
+                                    ball.vel_x = -ball.vel_x
+                                else:
+                                    ball.vel_y = -ball.vel_y
 
-                # Check collision with player
-                if ball.check_ball_collision(self.player):
-                    ball.collide(self.player)
+                                wall_hit_sound.play()
 
-                    if self.player.moving or ball:
-                        ball_hits_ball_sound.play()
+                for i, ball in enumerate(CURRENT_BALLS):
+                    Ball.displace_overlap(ball, self.player)
 
-                # Check collision with other balls
-                for j in range(i + 1, len(BALLS)):
-                    ball2 = BALLS[j]
-                    Ball.displace_overlap(ball, ball2)
-                    if ball.check_ball_collision(ball2):
-                        ball.collide(ball2)
+                    # Check collision with player
+                    if ball.check_ball_collision(self.player):
+                        ball.collide(self.player)
 
-                        if ball.moving or ball2.moving:
+                        if self.player.moving or ball:
                             ball_hits_ball_sound.play()
 
-                # Checks if any ball went inside the hole
-                for hole in HOLES:
-                    if hole.check_ball_in_hole(ball):
-                        BALLS.remove(ball)
-                        self.components.remove(ball)
-                        self.pocketed_balls.append(ball)
-                        if ball.color == Color.RED:
-                            self.score_red += 1
-                            TEXTS[0].update_text("Red: " + str(self.score_red))
-                        else:
-                            self.score_blue += 1
-                            TEXTS[1].update_text("Blue: " + str(self.score_blue))
+                    # Check collision with other balls
+                    for j in range(i + 1, len(CURRENT_BALLS)):
+                        ball2 = CURRENT_BALLS[j]
+                        Ball.displace_overlap(ball, ball2)
+                        if ball.check_ball_collision(ball2):
+                            ball.collide(ball2)
 
-            # Shows the direction pointed
-            if not self.player.moving:
-                self.player.draw_direction(screen)
+                            if ball.moving or ball2.moving:
+                                ball_hits_ball_sound.play()
 
-            if self.player.moving:
-                self.player.update()
+                    # Checks if any ball went inside the hole
+                    for hole in HOLES:
+                        if hole.check_ball_in_hole(ball):
+                            CURRENT_BALLS.remove(ball)
+                            self.components.remove(ball)
+                            self.pocketed_balls.append(ball)
+                            if ball.color == Color.RED:
+                                self.score_red += 1
+                                TEXTS[0].update_text("Red: " + str(self.score_red))
+                            else:
+                                self.score_blue += 1
+                                TEXTS[1].update_text("Blue: " + str(self.score_blue))
+
+                # Shows the direction pointed
+                if not self.player.moving:
+                    self.player.draw_direction(screen)
+
+                if self.player.moving:
+                    self.player.update()
 
             pygame.display.flip()
             clock.tick(FPS)
@@ -406,12 +496,12 @@ class Game:
         pygame.quit()
         sys.exit()
 
-sub_steps = 4
-
 # Game objects
 BUTTONS = [
-    Button(x = 5, y = 5, width = 150, height = 50, text = Text(text = "Reset", x = 0, y = 0, size = 40))
+    Button(x = 5, y = 5, width = 150, height = 50, text = Text(text = "Reset", x = 0, y = 0, size = 40), action = lambda: Game.reset_player(game) if game.winner is None else None),
+    Button(x = 1400, y = 5, width = 150, height = 50, text = Text(text = "Restart", x = 0, y = 0, size = 40), action = lambda: Game.restart_game(game) if game.winner is None else None)
 ]
+CURRENT_BUTTONS = BUTTONS
 PLAYER = Player(x = 500, y = 400, radius = 15)
 WALLS = [
     Wall(x = 40, y = 40, width = 60, height = 820),
@@ -419,17 +509,7 @@ WALLS = [
     Wall(x = 1500, y = 40, width = 60, height = 820),
     Wall(x = 100, y = 800, width = 1400, height = 60)
 ]
-BALLS = [
-    Ball(x = 700, y = 400, radius = 15, color = Color.BLUE),
-    Ball(x = 770, y = 400, radius = 15, color = Color.BLUE),
-    Ball(x = 840, y = 400, radius = 15, color = Color.BLUE),
-    Ball(x = 910, y = 400, radius = 15, color = Color.BLUE),
-
-    Ball(x = 700, y = 500, radius = 15, color = Color.RED),
-    Ball(x = 770, y = 500, radius = 15, color = Color.RED),
-    Ball(x = 840, y = 500, radius = 15, color = Color.RED),
-    Ball(x = 910, y = 500, radius = 15, color = Color.RED)
-]
+CURRENT_BALLS = Ball.get_new_balls()
 HOLES = [
     Hole(x = 120, y = 120, radius = 40),
     Hole(x = 780, y = 120, radius = 40),
@@ -461,10 +541,10 @@ for hole in HOLES:
 for wall in WALLS:
     game.add_component(wall)
 
-for ball in BALLS:
+for ball in CURRENT_BALLS:
     game.add_component(ball)
 
-for button in BUTTONS:
+for button in CURRENT_BUTTONS:
     game.add_component(button)
 
 for text in TEXTS:
