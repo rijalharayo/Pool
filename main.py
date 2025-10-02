@@ -353,7 +353,7 @@ class Game:
 
     # Restarts the game
     def restart_game(self):
-        global CURRENT_BALLS
+        global CURRENT_BALLS, CURRENT_BUTTONS
 
         self.components.clear()
         CURRENT_BALLS.clear()
@@ -363,6 +363,7 @@ class Game:
         self.pocketed_balls = []
         game.reset_player()
         self.player.update()
+        CURRENT_BUTTONS.clear()
         CURRENT_BUTTONS = Button.get_new_buttons()
         TEXTS[0].update_text("Red: " + str(self.score_red))
         TEXTS[1].update_text("Blue: " + str(self.score_blue))
