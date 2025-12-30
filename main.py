@@ -179,8 +179,7 @@ class Ball(Component):
 
         final_velocity1 = initial_v1 + (numerator / denominator)
         final_velocity2 = initial_v2 + (-numerator / denominator)
-
-        # Assign velocities from your formula
+        
         self.vel_x, self.vel_y = final_velocity1
         ball2.vel_x, ball2.vel_y = final_velocity2
 
@@ -564,4 +563,5 @@ for text in TEXTS:
 game.add_component(PLAYER)
 
 # Run the game
+
 game.run()
